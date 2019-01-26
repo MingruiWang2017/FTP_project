@@ -39,17 +39,17 @@
     
     1). 添加用户时，为用户新加一个HOME目录，该目录只能自己访问，且只能在自己的HOME目录下活动:
         
-        '''python
+        ```python
         os.popen("mkdir%s"%user_home_path)
-        '''
+        ```
         
     2). 参考Linux，在home目录下存放各个用户的家目录。用户的家目录可以用os.path.join(HOME_PATH, xxx)来拼接(xxx为家目录)，然后就可以创建用户的家目录了。
         
-        '''python
+        ```python
         BASE_DIR=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         HOME_PATH=os.path.join(BASE_DIR,"home")
         print(HOME_PATH)
-        '''
+        ```
     
     3). 访问HOME目录，即在HOME目录下使用cd命令即可，可以让用户一登录就处于HOME目录下自己的文件中。
     
