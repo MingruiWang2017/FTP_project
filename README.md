@@ -72,4 +72,9 @@
     对中断传输的文件，再次进行下载时，先比较文件大小，小的一方将当前文件大小发送给大的一方，大的一方打开文件后使用seek定位到上次传输结束的位置继续发送文件。
 
 
+
+参考：
+https://www.cnblogs.com/wj-1314/p/8707787.html
+https://blog.csdn.net/yinjing8435/article/details/70537068
+https://www.cnblogs.com/shengyang17/p/8901266.html
     
