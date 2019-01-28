@@ -9,9 +9,11 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # server的根目录
-USER_DIR = os.path.join(BASE_DIR, '')
+HOME_DIR = os.path.join(BASE_DIR, 'user_data','HOME')
 
 BIND_HOST = 'localhost'
 BIND_PORT = 8086
 ip_port = (BIND_HOST, BIND_PORT)
+
+MAX_RECV_DATA = 1024 * 8
 
