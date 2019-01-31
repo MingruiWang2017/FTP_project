@@ -79,4 +79,9 @@ https://www.cnblogs.com/wj-1314/p/8707787.html
 https://blog.csdn.net/qq_34964399/article/details/79248266
 
 https://www.cnblogs.com/shengyang17/p/8901266.html
+
+
+**编写过程中想到的方案**
+
+1. 用户信息可以使用Base64进行加密，这样在服务器端可以进行解密后查看，不像使用md5无法解密查看内容
     

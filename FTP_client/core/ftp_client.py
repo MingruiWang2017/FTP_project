@@ -11,7 +11,11 @@ import sys
 import socket
 import hashlib
 import json
-from ..conf import setting
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from conf import setting
+
 
 
 class FTPClient(object):
@@ -38,82 +42,96 @@ class FTPClient(object):
 
             # 分析cmd，使用反射调用相关方法
             cmd = cmd_line.split()[0]
-            if len(cmd_line.split()) > 1 :
-                param = cmd_line.split()[1]
-
             if hasattr(self, cmd):
-                func = getattr(cmd)
+                func = getattr(self, cmd)
+
+            if len(cmd_line.split()) > 1:
+                param = cmd_line.split()[1]
                 func(param)
+            else:
+                func()
 
     def login(self):
         '''
         登录操作，之后要求用户输入用户名和密码，以json格式发送给服务器端
         :return: boolean 是否登陆成功
         '''
-        user_name = input("Please input user name: ").strip()
-        password = input("Please input password: ").strip()
-        password = FTPClient.md5_secret(password)
-        login_dict = {"action" : "login",
-                      "username" : user_name,
-                      "password" : password}
-        login_json = json.dumps(login_dict)
-        # 向server端发送登录信息
-        login_json = bytes(login_json, encoding="utf-8")
-        self.client.send(login_json)
+        try:
+            user_name = input("Please input user name: ").strip()
+            password = input("Please input password: ").strip()
+            password = FTPClient.md5_secret(password)
+            login_dict = {"action" : "login",
+                          "username" : user_name,
+                          "password" : password}
+            login_json = json.dumps(login_dict)
+            # 向server端发送登录信息
+            login_json = bytes(login_json, encoding="utf-8")
+            info_len = len(login_json)
+            self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+            self.client.recv(1024)
+            self.client.send(login_json)
 
-        # 接收server端返回的登录信息
-        data = self.client.recv(1024)  # 第一条消息接收返回信息长度
-        info_len = int(data.decode('utf-8'))
-        self.client.send(b"ready")
-        recv_size = 0
-        while recv_size < info_len:
-            data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的登录信息
-            recv_size = len(data)
-        login_result = json.loads(data.decode())
+            # 接收server端返回的登录信息
+            data = self.client.recv(1024)  # 第一条消息接收返回信息长度
+            info_len = int(data.decode('utf-8'))
+            self.client.send(b"ready")
+            recv_size = 0
+            data = b""
+            while recv_size < info_len:
+                data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的登录信息
+                recv_size = len(data)
+            login_result = json.loads(data.decode())
 
-        if login_result.get("result") == True:
-            self.user_name = login_result.get("user_name")
-            self.user_dir = os.path.join(setting.HOME_DIR, user_name)
-            sys.path.append(self.user_dir)
-            print("Welcome back %s !" %self.user_name)
-        else:
-            print("Oooh, log in failur, please try again.")
-            self.login()
+            if login_result.get("result") == True:
+                self.user_name = login_result.get("user_name")
+                self.user_dir = os.path.join(setting.HOME_DIR, user_name)
+                sys.path.append(self.user_dir)  # 用户登陆成功，将用户的路径加入环境路径
+                print("Welcome back %s !" %self.user_name)
+            else:
+                print("Oooh, log in failur, please try again.")
+                self.login()
+        except KeyboardInterrupt:
+            return
+
 
     def singup(self):
         '''
         新用户注册
         :return: None, 注册成功显示用户名，注册失败提示用户重试
         '''
-        user_name = input("Please input user name: ").strip()
-        password = input("Please input password: ").strip()  # 由于是明文输入，就不再再次输入确认密码了
-        password = FTPClient.md5_secret(password)
-        signup_dict = {"action" : "signup",
-                       "user_name" : user_name,
-                       "password" : password}
-        signup_json = json.dumps(signup_dict)
-        # 向server发送注册信息
-        signup_json = bytes(signup_json, encoding="utf-8")
-        self.client.send(signup_json)
+        try:
+            user_name = input("Please input user name: ").strip()
+            password = input("Please input password: ").strip()  # 由于是明文输入，就不再再次输入确认密码了
+            password = FTPClient.md5_secret(password)
+            signup_dict = {"action": "signup",
+                           "user_name": user_name,
+                           "password": password}
+            signup_json = json.dumps(signup_dict)
+            # 向server发送注册信息
+            signup_json = bytes(signup_json, encoding="utf-8")
+            self.client.send(signup_json)
 
-        # 接收server端返回的注册信息
-        data = self.client.recv(1024)  # 第一条消息接收返回信息长度
-        info_len = int(data.decode('utf-8'))
-        self.client.send(b"ready")
-        recv_size = 0
-        while recv_size < info_len:
-            data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的注册信息
-            recv_size = len(data)
-        signup_result = json.loads(data.decode())
+            # 接收server端返回的注册信息
+            data = self.client.recv(1024)  # 第一条消息接收返回信息长度
+            info_len = int(data.decode('utf-8'))
+            self.client.send(b"ready")
+            recv_size = 0
+            data = None
+            while recv_size < info_len:
+                data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的注册信息
+                recv_size = len(data)
+            signup_result = json.loads(data.decode())
 
-        if signup_result.get("result") == True:
-            self.user_name = signup_result.get("user_name")
-            self.user_dir = os.path.join(setting.HOME_DIR, user_name)
-            sys.path.append(self.user_dir)
-            print("Congratulations %s, you have signded up successfully!" % self.user_name)
-        else:
-            print("Oooh, signup failure, please try again.")
-            self.singup()
+            if signup_result.get("result") == True:
+                self.user_name = signup_result.get("user_name")
+                self.user_dir = os.path.join(setting.HOME_DIR, user_name)
+                sys.path.append(self.user_dir)  # 新用户注册成功，用户路径加入系统路径
+                print("Congratulations %s, you have signded up successfully!" % self.user_name)
+            else:
+                print("Oooh, signup failure, please try again.")
+                self.singup()
+        except KeyboardInterrupt:
+            return
 
 
 
@@ -129,3 +147,8 @@ class FTPClient(object):
         bytes_content = bytes(content, encoding='utf-8')
         md5.update(bytes_content)
         return md5.hexdigest()
+
+
+if __name__ == "__main__":
+    my_client = FTPClient()
+    my_client.run()
