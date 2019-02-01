@@ -38,7 +38,7 @@ class FTPClient(object):
             # 接收入户输入，作为命令
             cmd_line = input(">>:").strip()
             if len(cmd_line) == 0:
-                break
+                continue
 
             # 分析cmd，使用反射调用相关方法
             cmd = cmd_line.split()[0]
@@ -78,23 +78,24 @@ class FTPClient(object):
             recv_size = 0
             data = b""
             while recv_size < info_len:
-                data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的登录信息
+                data += self.client.recv(setting.MAX_RECV_SIZE)  # 接收返回的登录信息
                 recv_size = len(data)
             login_result = json.loads(data.decode())
 
             if login_result.get("result") == True:
-                self.user_name = login_result.get("user_name")
+                self.user_name = user_name
                 self.user_dir = os.path.join(setting.HOME_DIR, user_name)
                 sys.path.append(self.user_dir)  # 用户登陆成功，将用户的路径加入环境路径
-                print("Welcome back %s !" %self.user_name)
+                print("%d: Welcome back %s !" % (login_result.get("code"), self.user_name))
             else:
-                print("Oooh, log in failur, please try again.")
+                print("%d: Oooh, log in failur, please try again. %s" % (login_result.get("code"), login_result.get("msg")))
                 self.login()
+        except EOFError:
+            return
         except KeyboardInterrupt:
             return
 
-
-    def singup(self):
+    def signup(self):
         '''
         新用户注册
         :return: None, 注册成功显示用户名，注册失败提示用户重试
@@ -104,11 +105,14 @@ class FTPClient(object):
             password = input("Please input password: ").strip()  # 由于是明文输入，就不再再次输入确认密码了
             password = FTPClient.md5_secret(password)
             signup_dict = {"action": "signup",
-                           "user_name": user_name,
+                           "username": user_name,
                            "password": password}
             signup_json = json.dumps(signup_dict)
             # 向server发送注册信息
             signup_json = bytes(signup_json, encoding="utf-8")
+            info_len = len(signup_json)
+            self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+            self.client.recv(1024)
             self.client.send(signup_json)
 
             # 接收server端返回的注册信息
@@ -116,9 +120,9 @@ class FTPClient(object):
             info_len = int(data.decode('utf-8'))
             self.client.send(b"ready")
             recv_size = 0
-            data = None
+            data = b""
             while recv_size < info_len:
-                data += self.client.recv(setting.MAX_RECV_SZIE)  # 接收返回的注册信息
+                data += self.client.recv(setting.MAX_RECV_SIZE)  # 接收返回的注册信息
                 recv_size = len(data)
             signup_result = json.loads(data.decode())
 
@@ -126,10 +130,12 @@ class FTPClient(object):
                 self.user_name = signup_result.get("user_name")
                 self.user_dir = os.path.join(setting.HOME_DIR, user_name)
                 sys.path.append(self.user_dir)  # 新用户注册成功，用户路径加入系统路径
-                print("Congratulations %s, you have signded up successfully!" % self.user_name)
+                print("%d: Congratulations %s, you have signded up successfully!" % (signup_result.get("code"), self.user_name))
             else:
-                print("Oooh, signup failure, please try again.")
-                self.singup()
+                print("%d: Oooh, signup failure, please try again." % signup_result.get("code"))
+                self.signup()
+        except EOFError:
+            return
         except KeyboardInterrupt:
             return
 

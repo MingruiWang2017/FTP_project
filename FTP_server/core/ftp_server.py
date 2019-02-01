@@ -37,20 +37,19 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         '''
         while True:
             try:
-                data = self.request.recv(setting.MAX_RECV_DATA).decode()
+                data = self.request.recv(setting.MAX_RECV_SIZE).decode()
                 print(data)
                 info_len = int(data)
                 recv_len = 0
                 data = b""
                 self.request.send(b"ready")
                 while recv_len < info_len:
-                    data += self.request.recv(setting.MAX_RECV_DATA)
+                    data += self.request.recv(setting.MAX_RECV_SIZE)
                     recv_len = len(data)
 
                 if not data:
                     print("\033[31;1m--------user break connection--------\033[0m")
                     break
-
 
                 # 解析json数据
                 data = data.decode()
@@ -79,10 +78,70 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         username = info.get("username")
         password = info.get("password")
         # 读取用户信息文件确认用户是否存在
-        with open("..conf.userinfo.ini") as f:
+        with open("../conf/user_info.ini", "r", encoding="utf-8") as f:
             if len(f.read()) > 0:
+                f.seek(0)
                 all_user_info = json.load(f)
                 print(all_user_info)
+                if username in all_user_info:
+                    user_info = all_user_info.get(username)
+                    if user_info.get("password") == password:
+                        result = {"result": True,
+                                  "code": 200,
+                                  "msg": "Login success!"}
+                        print("\033[32;1m----- login success -----\033[0m")
+                    else:
+                        result = {"result": False,
+                                  "code": 401,
+                                  "msg": "Passwod error!"}
+                        print("\033[31;1m----- login fail: wrong password -----\033[0m")
+                else:
+                    result = {"result": False,
+                              "code": 400,
+                              "msg": "No this user!"}
+                    print("\033[31;1m----- login fail: no such user -----\033[0m")
+        # 返回登录结果
+        result_info = bytes(json.dumps(result), encoding='utf-8')
+        self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
+        self.request.recv(setting.MAX_RECV_SIZE)
+        self.request.send(result_info)
+
+    def signup(self, info):
+        '''
+        创建新用户，将新用户信息加入配置文件
+        :param info:
+        :return:
+        '''
+        print(info)
+        username = info.get("username")
+        password = info.get("password")
+        # 读取用户信息文件确认用户是否存在
+        with open("../conf/user_info.ini", "r+", encoding="utf-8") as f:
+            if len(f.read()) > 0:
+                f.seek(0)
+                all_user_info = json.load(f)
+                print(all_user_info)
+                if username in all_user_info:
+                    result = {"result": False,
+                              "code": 400,
+                              "msg": "User has already existed!"}
+                    print("\033[31;1m----- signup fail: user name already existed -----\033[0m")
+                else:
+                    info.pop("action")
+                    new_user_info = {username: info}
+                    all_user_info.update(new_user_info)
+                    f.seek(0)  # 将文件指针移动到文件开始，覆盖原本的文件内容
+                    json.dump(all_user_info, f)
+                    result = {"result": True,
+                              "code": 200,
+                              "msg": "Congratulations, signup success!"}
+                    print("\033[32;1m----- signup success -----\033[0m")
+
+        # 返回登录结果
+        result_info = bytes(json.dumps(result), encoding='utf-8')
+        self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
+        self.request.recv(setting.MAX_RECV_SIZE)
+        self.request.send(result_info)
 
 
 

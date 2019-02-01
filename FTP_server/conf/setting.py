@@ -15,5 +15,5 @@ BIND_HOST = 'localhost'
 BIND_PORT = 8086
 ip_port = (BIND_HOST, BIND_PORT)
 
-MAX_RECV_DATA = 1024 * 8
+MAX_RECV_SIZE = 1024 * 8
 
