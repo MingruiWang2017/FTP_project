@@ -65,6 +65,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                 else:
                     print("\033[31;1m-------command not found-------\033[0m")
             except ConnectionResetError as err:
+                print(err)
                 print("\033[31;1m-----------user break connection---------\033[0m")
                 break
 
@@ -90,6 +91,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                                   "code": 200,
                                   "msg": "Login success!"}
                         print("\033[32;1m----- login success -----\033[0m")
+                        sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
                     else:
                         result = {"result": False,
                                   "code": 401,
@@ -114,7 +116,6 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         '''
         print(info)
         username = info.get("username")
-        password = info.get("password")
         # 读取用户信息文件确认用户是否存在
         with open("../conf/user_info.ini", "r+", encoding="utf-8") as f:
             if len(f.read()) > 0:
@@ -136,12 +137,38 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                               "code": 200,
                               "msg": "Congratulations, signup success!"}
                     print("\033[32;1m----- signup success -----\033[0m")
+                    sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
 
         # 返回登录结果
         result_info = bytes(json.dumps(result), encoding='utf-8')
         self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
         self.request.recv(setting.MAX_RECV_SIZE)
         self.request.send(result_info)
+
+    def logout(self, info):
+        '''
+        用户退出登录，服务器端从sys路径中移除用户的路径，结束当前连接
+        :return:
+        '''
+        print(info)
+        user_dir = os.path.join(setting.HOME_DIR, info.get("username"))
+        print(user_dir)
+        try:
+            sys.path.remove(user_dir)
+        except ValueError:
+            result = {"result": False,
+                      "code": 400,
+                      "msg": "%s user not login!" % info.get("username")}
+        else:
+            result = {"result": True,
+                      "code": 200}
+        print("\033[31;1m----- logout success -----\033[0m")
+        result_info = bytes(json.dumps(result), encoding='utf-8')
+        info_len = len(result_info)
+        self.request.send(bytes(info_len.__str__(), encoding='utf-8'))
+        self.request.recv(1024)
+        self.request.send(result_info)
+        raise ConnectionResetError("user logout")
 
 
 

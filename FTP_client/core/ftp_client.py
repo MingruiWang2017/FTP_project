@@ -90,9 +90,7 @@ class FTPClient(object):
             else:
                 print("%d: Oooh, log in failur, please try again. %s" % (login_result.get("code"), login_result.get("msg")))
                 self.login()
-        except EOFError:
-            return
-        except KeyboardInterrupt:
+        except (EOFError, KeyboardInterrupt):
             return
 
     def signup(self):
@@ -134,10 +132,39 @@ class FTPClient(object):
             else:
                 print("%d: Oooh, signup failure, please try again." % signup_result.get("code"))
                 self.signup()
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             return
-        except KeyboardInterrupt:
-            return
+
+    def logout(self):
+        '''
+        退出当前用户登录状态
+        :return:
+        '''
+        logout_info = {"action": "logout",
+                       "username": self.user_name}
+
+        logout_info = bytes(json.dumps(logout_info), encoding='utf-8')
+        info_len = len(logout_info)
+        self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(logout_info)
+
+        # 接收信息长度和信息内容
+        data = self.client.recv(1024).decode()
+        info_len = int(data)
+        self.client.send(b'ready')
+        recv_len = 0
+        data = b""
+        while recv_len < info_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
+
+        logout_result = json.loads(data.decode('utf-8'))
+        if logout_result.get("result") == True:
+            sys.path.remove(self.user_dir)
+            print("%d: logout success!" % logout_result.get("code"))
+        else:
+            print("%d: logout failure! %s" % (logout_result.get("code"),logout_result.get("msg")))
 
 
 
