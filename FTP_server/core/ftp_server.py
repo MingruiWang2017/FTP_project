@@ -170,6 +170,19 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         self.request.send(result_info)
         raise ConnectionResetError("user logout")
 
+    def put(self, info):
+        '''
+        接收来自客户端的上传文件并保存到服务器端用户的目录下
+        :param info:
+        :return:
+        '''
+        print(info)
+        file_name = info.get("filename")
+        file_path = os.path.join(setting.HOME_DIR, info.get("username"), file_name)
+        if not os.path.exists(file_path):
+            # 如果服务器端没有该文件，则接收并保存
+
+
 
 
 

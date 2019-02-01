@@ -166,6 +166,101 @@ class FTPClient(object):
         else:
             print("%d: logout failure! %s" % (logout_result.get("code"),logout_result.get("msg")))
 
+    def put(self):
+        '''
+        客户端向服务器端上传文件
+        :return:
+        '''
+        try:
+            file_name = input("Please input the file's name you want upload: ")
+        except (KeyboardInterrupt, EOFError):
+            return
+        # 判断用户输入的文件名是否存在
+        file_path = os.path.join(self.user_dir, file_name)
+        if not os.path.exists(file_path):
+            print("The file name you inputted doesn't exist! Please try again")
+            self.put()
+        put_info = {"action": "put",
+                    "username": self.user_name,
+                    "filename": file_name}
+        put_json = json.dumps(put_info)
+        put_info = bytes(put_json, encoding='utf-8')
+        info_len = len(put_info)
+        self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(put_info)
+
+        # 接收服务器端文件情况反馈，是否存在该文件，是否存在同名文件等情况
+        data = self.client.recv(1024).decode()
+        info_len = int(data)
+        self.client.send(b"ready")
+        recv_len = 0
+        data = b""
+        while recv_len < info_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+        put_result = json.loads(data.decode('utf-8'))
+        # 根据服务器端文件情况作出不同操作
+        file_size = os.stat(file_path).st_size
+        if put_result.get("existed") == False:
+            # 服务器端不存在该文件，直接上传
+            # 发送文件大小
+            print("file size: ", file_size)
+            self.client.send(bytes(file_size, encoding='utf-8'))
+            self.client.recv(1024)
+            # 发送文件内容
+            print("File starts uploading...")
+            with open(file_path, 'rb') as f:
+                for line in f:
+                    self.client.send(line)
+            print("File send over!")
+        elif put_result.get("existed") == True and put_result.get("filesize") < file_size:
+            # 如果客户端已经存在该文件，但是文件大小小于本地文件大小，继续上传（断点续传）
+            # 发送文件大小
+            server_size = put_result.get("filesize")  # 服务器端文件大小
+            print("left size: ", file_size - server_size)
+            self.client.send(bytes(file_size, encoding='utf-8'))
+            self.client.recv(1024)
+            # 发送文件内容
+            print("File is on server but not complete, start breakpoint continuation...")
+            with open(file_path, 'rb') as f:
+                f.seek(server_size)  # 将文件的读取指针置于断点位置处
+                for line in f:
+                    self.client.send(line)
+            print("File send over!")
+        elif put_result.get("existed") == True and put_result.get("filesize") < file_size:
+            # 如果服务器端已经存在该文件，且大小相同，则比较二者的md5值是否相同
+            # 计算本地文件md5值
+            md5 = hashlib.md5()
+            with open(file_path, "rb") as f:
+                for line in f:
+                    md5.update(line)  # 一行行计算，防止文件一次被读入内存，占用过多空间
+                md5_value = md5.hexdigest()
+            server_file_md5 = put_result.get("md5")
+            print("local file MD5: %s" % md5_value)
+            print("server file MD5: %s" % server_file_md5)
+
+            if md5_value == server_file_md5:
+                # 如果相同，不上传文件
+                print("The file already exists on the server, no need to upload!")
+            else:
+                # 如果不同，重新上传文件
+                print("file size: ", file_size)
+                self.client.send(bytes(file_size, encoding='utf-8'))
+                self.client.recv(1024)
+                # 发送文件内容
+                print("File starts reuploading...")
+                with open(file_path, 'rb') as f:
+                    for line in f:
+                        self.client.send(line)
+                print("File send over!")
+
+
+
+
+        # TODO: 之后添加进度条功能，配额判断功能，断点续传功能, md5校验功能
+
+
+
 
 
 
