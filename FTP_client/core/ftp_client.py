@@ -180,9 +180,11 @@ class FTPClient(object):
         if not os.path.exists(file_path):
             print("The file name you inputted doesn't exist! Please try again")
             self.put()
+        file_size = os.stat(file_path).st_size
         put_info = {"action": "put",
                     "username": self.user_name,
-                    "filename": file_name}
+                    "filename": file_name,
+                    "filesize": file_size}
         put_json = json.dumps(put_info)
         put_info = bytes(put_json, encoding='utf-8')
         info_len = len(put_info)
@@ -200,7 +202,7 @@ class FTPClient(object):
             data += self.client.recv(setting.MAX_RECV_SIZE)
         put_result = json.loads(data.decode('utf-8'))
         # 根据服务器端文件情况作出不同操作
-        file_size = os.stat(file_path).st_size
+
         if put_result.get("existed") == False:
             # 服务器端不存在该文件，直接上传
             # 发送文件大小
@@ -241,6 +243,9 @@ class FTPClient(object):
 
             if md5_value == server_file_md5:
                 # 如果相同，不上传文件
+                self.client.send(b"0")  # 告诉服务器端要传输的文件大小为0
+                self.client.recv(1024)
+                self.client.send(b"")
                 print("The file already exists on the server, no need to upload!")
             else:
                 # 如果不同，重新上传文件

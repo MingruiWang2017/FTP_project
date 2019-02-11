@@ -172,7 +172,9 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
 
     def put(self, info):
         '''
-        接收来自客户端的上传文件并保存到服务器端用户的目录下
+        接收来自客户端的上传文件并保存到服务器端用户的目录下，
+        当接收到来自客户端的消息后，服务器端先返回服务器端文件的状况：有，有一部分，没有，
+        并将消息返回给客户端，客户端根据情况分别处理
         :param info:
         :return:
         '''
@@ -181,6 +183,82 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         file_path = os.path.join(setting.HOME_DIR, info.get("username"), file_name)
         if not os.path.exists(file_path):
             # 如果服务器端没有该文件，则接收并保存
+            # 发送服务器端文件情况
+            result = {"existed": False}
+            result_info = bytes(json.dumps(result), encoding='utf-8')
+            self.request.send(bytes(len(result_info), encoding='utf-8'))
+            self.request.recv(1024)
+            self.request.send(result_info)
+            # 接收文件
+            file_size = int(self.request.recv(1024).decode())
+            self.request.send(b"ready")
+            print("file size: ", file_size)
+            recv_size = 0
+            with open(file_path, 'wb') as f:
+                while recv_size < file_size:
+                    data = self.request.recv(setting.MAX_RECV_SIZE)
+                    recv_size += len(data)
+                    f.write(data)
+                    # f.flush()
+                print("\033[32;1m File received completed! \033[0m")
+
+        else:
+            # 服务器端该文件存在, 获取文件大小，与客户端文件大小比较
+            server_file_size = os.stat(file_path).st_size
+            if server_file_size < info.get("filesize"):
+                # 服务器端文件小于客户端文件，进行断点续传
+                result = {"existed": True,
+                          "filesize": server_file_size}
+                result_info = bytes(json.dumps(result), encoding='utf-8')
+                self.request.send(bytes(len(result_info), encoding='utf-8'))
+                self.request.recv(1024)
+                self.request.send(result_info)
+                # 接收文件
+                file_size = int(self.request.recv(1024).decode())
+                self.request.send(b"ready")
+                left_size = file_size - server_file_size
+                print("left size: ", left_size)
+                recv_size = 0
+                with open(file_path, 'wb') as f:
+                    f.seek(server_file_size)  # 将文件指针移动到文件最后
+                    while recv_size < left_size:
+                        data = self.request.recv(setting.MAX_RECV_SIZE)
+                        recv_size += len(data)
+                        f.write(data)
+                        # f.flush()
+                    print("\033[32;1m File received completed! \033[0m")
+
+            elif server_file_size == info.get("filesize"):
+                # 如果服务器端文件大小与客户端文件大小相同，比较二者md5值
+                md5 = hashlib.md5()
+                with open(file_path, "rb") as f:
+                    for line in f:
+                        md5.update(line)
+                md5_value = md5.hexdigest()
+                result = {"existed": True,
+                          "filesize": server_file_size,
+                          "md5": md5_value}
+                result_info = bytes(json.dumps(result), encoding='utf-8')
+                self.request.send(bytes(len(result_info), encoding='utf-8'))
+                self.request.recv(1024)
+                self.request.send(result_info)
+
+                # 如果md5值相同，客户端返回的文件大小将为0，如果不同，客户端将重新发送一遍文件
+                file_size = int(self.request.recv(1024).decode())
+                if file_size == 0:
+                    self.request.send(b"same")
+                    print("\033[32;1m Same file, no need to transmission! \033[0m")
+                else:
+                    self.request.send(b"ready")
+                    print("file size: ", file_size)
+                    recv_size = 0
+                    with open(file_path, 'wb') as f:
+                        while recv_size < file_size:
+                            data = self.request.recv(setting.MAX_RECV_SIZE)
+                            recv_size += len(data)
+                            f.write(data)
+                            # f.flush()
+                        print("\033[32;1m File received completed! \033[0m")
 
 
 
