@@ -8,8 +8,8 @@
 
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-HOME_DIR = os.path.join(BASE_DIR, "/user_data/HOME")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # client的根目录
+HOME_DIR = os.path.join(BASE_DIR, 'user_data','HOME')
 
 MAX_RECV_SIZE = 1024 * 8
 USER_QUATO = 1024 * 1024 * 1024 * 10  # 初始用户配额为10G

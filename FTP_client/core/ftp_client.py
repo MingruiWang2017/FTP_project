@@ -124,13 +124,16 @@ class FTPClient(object):
                 recv_size = len(data)
             signup_result = json.loads(data.decode())
 
+            print(signup_result)
             if signup_result.get("result") == True:
-                self.user_name = signup_result.get("user_name")
+                self.user_name = signup_result.get("username")
                 self.user_dir = os.path.join(setting.HOME_DIR, user_name)
                 sys.path.append(self.user_dir)  # 新用户注册成功，用户路径加入系统路径
+                print(self.user_dir)
+                os.makedirs(self.user_dir)  # 为用户创建目录
                 print("%d: Congratulations %s, you have signded up successfully!" % (signup_result.get("code"), self.user_name))
             else:
-                print("%d: Oooh, signup failure, please try again." % signup_result.get("code"))
+                print("%d: Oooh, signup failure. %s" % (signup_result.get("code"), signup_result.get("msg")))
                 self.signup()
         except (EOFError, KeyboardInterrupt):
             return
@@ -195,19 +198,21 @@ class FTPClient(object):
         # 接收服务器端文件情况反馈，是否存在该文件，是否存在同名文件等情况
         data = self.client.recv(1024).decode()
         info_len = int(data)
+        print(info_len)
         self.client.send(b"ready")
         recv_len = 0
         data = b""
         while recv_len < info_len:
             data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
         put_result = json.loads(data.decode('utf-8'))
         # 根据服务器端文件情况作出不同操作
-
+        print(put_result)
         if put_result.get("existed") == False:
             # 服务器端不存在该文件，直接上传
             # 发送文件大小
             print("file size: ", file_size)
-            self.client.send(bytes(file_size, encoding='utf-8'))
+            self.client.send(bytes(file_size.__str__(), encoding='utf-8'))
             self.client.recv(1024)
             # 发送文件内容
             print("File starts uploading...")
@@ -220,7 +225,7 @@ class FTPClient(object):
             # 发送文件大小
             server_size = put_result.get("filesize")  # 服务器端文件大小
             print("left size: ", file_size - server_size)
-            self.client.send(bytes(file_size, encoding='utf-8'))
+            self.client.send(bytes(file_size.__str__(), encoding='utf-8'))
             self.client.recv(1024)
             # 发送文件内容
             print("File is on server but not complete, start breakpoint continuation...")
@@ -250,7 +255,7 @@ class FTPClient(object):
             else:
                 # 如果不同，重新上传文件
                 print("file size: ", file_size)
-                self.client.send(bytes(file_size, encoding='utf-8'))
+                self.client.send(bytes(file_size.__str__(), encoding='utf-8'))
                 self.client.recv(1024)
                 # 发送文件内容
                 print("File starts reuploading...")

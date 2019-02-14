@@ -37,6 +37,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         '''
         while True:
             try:
+                print("<<:", "")
                 data = self.request.recv(setting.MAX_RECV_SIZE).decode()
                 print(data)
                 info_len = int(data)
@@ -121,7 +122,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
             if len(f.read()) > 0:
                 f.seek(0)
                 all_user_info = json.load(f)
-                print(all_user_info)
+                print("all user: ", all_user_info)
                 if username in all_user_info:
                     result = {"result": False,
                               "code": 400,
@@ -135,9 +136,23 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                     json.dump(all_user_info, f)
                     result = {"result": True,
                               "code": 200,
+                              "username": username,
                               "msg": "Congratulations, signup success!"}
                     print("\033[32;1m----- signup success -----\033[0m")
                     sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
+                    os.makedirs(os.path.join(setting.HOME_DIR, username))  # 为用户创建目录
+            else:
+                info.pop("action")
+                new_user_info = {username: info}
+                f.seek(0)  # 将文件指针移动到文件开始，覆盖原本的文件内容
+                json.dump(new_user_info, f)
+                result = {"result": True,
+                          "code": 200,
+                          "username": username,
+                          "msg": "Congratulations, signup success!"}
+                print("\033[32;1m----- signup success -----\033[0m")
+                sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
+                os.makedirs(os.path.join(setting.HOME_DIR, username))  # 为用户创建目录
 
         # 返回登录结果
         result_info = bytes(json.dumps(result), encoding='utf-8')
@@ -186,7 +201,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
             # 发送服务器端文件情况
             result = {"existed": False}
             result_info = bytes(json.dumps(result), encoding='utf-8')
-            self.request.send(bytes(len(result_info), encoding='utf-8'))
+            self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
             self.request.recv(1024)
             self.request.send(result_info)
             # 接收文件
@@ -210,7 +225,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                 result = {"existed": True,
                           "filesize": server_file_size}
                 result_info = bytes(json.dumps(result), encoding='utf-8')
-                self.request.send(bytes(len(result_info), encoding='utf-8'))
+                self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
                 self.request.recv(1024)
                 self.request.send(result_info)
                 # 接收文件
@@ -239,7 +254,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                           "filesize": server_file_size,
                           "md5": md5_value}
                 result_info = bytes(json.dumps(result), encoding='utf-8')
-                self.request.send(bytes(len(result_info), encoding='utf-8'))
+                self.request.send(bytes(len(result_info).__str__(), encoding='utf-8'))
                 self.request.recv(1024)
                 self.request.send(result_info)
 
