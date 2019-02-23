@@ -24,6 +24,7 @@ class FTPClient(object):
     '''
     user_name = None
     user_dir = None
+    user_cur_dir = None
 
     def __init__(self):
         self.client = socket.socket()
@@ -85,7 +86,9 @@ class FTPClient(object):
             if login_result.get("result") == True:
                 self.user_name = user_name
                 self.user_dir = os.path.join(setting.HOME_DIR, user_name)
+                self.user_cur_dir = self.user_dir
                 sys.path.append(self.user_dir)  # 用户登陆成功，将用户的路径加入环境路径
+                os.chdir(self.user_dir)
                 print("%d: Welcome back %s !" % (login_result.get("code"), self.user_name))
             else:
                 print("%d: Oooh, log in failur, please try again. %s" % (login_result.get("code"), login_result.get("msg")))
@@ -128,9 +131,11 @@ class FTPClient(object):
             if signup_result.get("result") == True:
                 self.user_name = signup_result.get("username")
                 self.user_dir = os.path.join(setting.HOME_DIR, user_name)
+                self.user_cur_dir = self.user_dir
                 sys.path.append(self.user_dir)  # 新用户注册成功，用户路径加入系统路径
                 print(self.user_dir)
                 os.makedirs(self.user_dir)  # 为用户创建目录
+                os.chdir(self.user_dir)
                 print("%d: Congratulations %s, you have signded up successfully!" % (signup_result.get("code"), self.user_name))
             else:
                 print("%d: Oooh, signup failure. %s" % (signup_result.get("code"), signup_result.get("msg")))
@@ -167,19 +172,23 @@ class FTPClient(object):
             sys.path.remove(self.user_dir)
             print("%d: logout success!" % logout_result.get("code"))
         else:
-            print("%d: logout failure! %s" % (logout_result.get("code"),logout_result.get("msg")))
+            print("%d: logout failure! %s" % (logout_result.get("code"), logout_result.get("msg")))
 
     def put(self):
         '''
         客户端向服务器端上传文件
         :return:
         '''
+        if self.user_name == None:
+            print("Please login first: login")
+            return
         try:
             file_name = input("Please input the file's name you want upload: ")
         except (KeyboardInterrupt, EOFError):
             return
         # 判断用户输入的文件名是否存在
-        file_path = os.path.join(self.user_dir, file_name)
+        file_path = os.path.join(self.user_cur_dir, file_name)
+        # file_name = file_path.split(self.user_name)[1]
         if not os.path.exists(file_path):
             print("The file name you inputted doesn't exist! Please try again")
             self.put()
@@ -231,17 +240,18 @@ class FTPClient(object):
             print("File is on server but not complete, start breakpoint continuation...")
             with open(file_path, 'rb') as f:
                 f.seek(server_size)  # 将文件的读取指针置于断点位置处
+                print("cursor location: ", f.tell())
                 for line in f:
                     self.client.send(line)
             print("File send over!")
-        elif put_result.get("existed") == True and put_result.get("filesize") < file_size:
+        elif put_result.get("existed") == True and put_result.get("filesize") >= file_size:
             # 如果服务器端已经存在该文件，且大小相同，则比较二者的md5值是否相同
             # 计算本地文件md5值
             md5 = hashlib.md5()
             with open(file_path, "rb") as f:
                 for line in f:
                     md5.update(line)  # 一行行计算，防止文件一次被读入内存，占用过多空间
-                md5_value = md5.hexdigest()
+            md5_value = md5.hexdigest()
             server_file_md5 = put_result.get("md5")
             print("local file MD5: %s" % md5_value)
             print("server file MD5: %s" % server_file_md5)
@@ -251,7 +261,7 @@ class FTPClient(object):
                 self.client.send(b"0")  # 告诉服务器端要传输的文件大小为0
                 self.client.recv(1024)
                 self.client.send(b"")
-                print("The file already exists on the server, no need to upload!")
+                print("The file already existed on the server, no need to upload!")
             else:
                 # 如果不同，重新上传文件
                 print("file size: ", file_size)
@@ -267,10 +277,169 @@ class FTPClient(object):
 
 
 
-        # TODO: 之后添加进度条功能，配额判断功能，断点续传功能, md5校验功能
+        # TODO: 之后添加进度条功能，配额判断功能
 
+    def get(self):
+        """
+        从服务器获取文件，发送到客户端，文件传输情况与put类似
+        :return:  None
+        """
+        pass
 
+    def ls(self):
+        """
+        列出用户本地目录下的文件
+        :return:
+        """
+        list_result = os.listdir(self.user_cur_dir)
+        print(list_result)
 
+    def ls_remote(self):
+        """
+        列出用户服务器端的目录下的文件
+        :return:
+        """
+        # if self.user_cur_dir.endswith(self.user_name):
+        #     path = ""
+        # else:
+        #     path = self.user_cur_dir.split(self.user_name)[1]
+
+        ls_info = {"action": "ls",
+                   "username": self.user_name}
+        ls_info_json = json.dumps(ls_info)
+        ls_info_bytes = bytes(ls_info_json, encoding='utf-8')
+        info_len = len(ls_info_bytes)
+        self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(ls_info_bytes)
+        # 接收返回
+        result_len = int(self.client.recv(setting.MAX_RECV_SIZE).decode())
+        self.client.send(b"ready")
+        recv_len = 0
+        data = b""
+        while recv_len < result_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
+        print(json.loads(data.decode()).get("ls"))
+
+    def cd(self):
+        """
+        打开用户本地下的某一文件夹
+        :param floder:
+        :return:
+        """
+        print("current location: ", self.user_cur_dir)
+        try:
+            folder = input("input the folder name: ")
+            os.chdir(os.path.join(self.user_cur_dir, folder))
+        except FileNotFoundError as e:
+            print("当前目录下未找到%s文件夹！" % folder)
+        except NotADirectoryError as e:
+            print("%s 不是文件夹" % folder)
+        else:
+            self.user_cur_dir = os.getcwd()
+            print("current location: ", self.user_cur_dir)
+
+    def cd_remote(self):
+        """
+        打开用户服务器端的某一文件夹
+        :return:
+        """
+        folder = input("input the folder name: ")
+        cd_info = {"action": "cd",
+                   "username": self.user_name,
+                   "path": folder}
+        cd_json = json.dumps(cd_info)
+        cd_bytes = bytes(cd_json, encoding='utf-8')
+        info_len = len(cd_bytes)
+        self.client.send(bytes(info_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(cd_bytes)
+        # 接收返回
+        result_len = int(self.client.recv(setting.MAX_RECV_SIZE).decode())
+        self.client.send(b"ready")
+        data = b""
+        recv_len = 0
+        while recv_len < result_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
+        result = json.loads(data)
+
+        print("%d: %s" %(result.get("code"), result.get("msg")))
+
+    def pwd(self):
+        """
+        获取当前位置
+        :return:
+        """
+        print("current location: ", os.getcwd())
+
+    def pwd_remote(self):
+        """
+        获取服务器上的额当前位置
+        :return:
+        """
+        pwd_dict = {"action": "pwd",
+                    "username": self.user_name}
+        pwd_json = json.dumps(pwd_dict)
+        pwd_bytes = bytes(pwd_json, encoding='utf-8')
+        pwd_len = len(pwd_bytes)
+        self.client.send(bytes(pwd_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(pwd_bytes)
+        # 接收返回
+        result_len = int(self.client.recv(setting.MAX_RECV_SIZE).decode())
+        self.client.send(b"ready")
+        data = b""
+        recv_len = 0
+        while recv_len < result_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
+        result = data.decode()
+        result_json = json.loads(result)
+        print("%s: %s" % (result_json.get("code"), result_json.get("pwd")))
+
+    def mkdir(self):
+        """
+        本地创建文件夹
+        :return:
+        """
+        folder_name = input("input folder name: ")
+        try:
+            os.makedirs(folder_name)
+        except FileExistsError:
+            print("the folder name already existed! ")
+        except:
+            print("make dir error")
+        else:
+            print("make dir %s success" % folder_name)
+
+    def mkdir_remote(self):
+        """
+        在服务器端创建文件夹
+        :return:
+        """
+        folder_name = input("input folder name: ")
+        mkdir_dict = {"action": "mkdir",
+                      "usernaem": self.user_name,
+                      "path": folder_name}
+        mkdir_json = json.dumps(mkdir_dict)
+        mkdir_bytes = bytes(mkdir_json, encoding='utf-8')
+        mkdir_len = len(mkdir_bytes)
+        self.client.send(bytes(mkdir_len.__str__(), encoding='utf-8'))
+        self.client.recv(1024)
+        self.client.send(mkdir_bytes)
+        # 接受返回
+        result_len = int(self.client.recv(setting.MAX_RECV_SIZE).decode())
+        self.client.send(b"ready")
+        data = b""
+        recv_len = 0
+        while recv_len < result_len:
+            data += self.client.recv(setting.MAX_RECV_SIZE)
+            recv_len = len(data)
+        result = data.decode()
+        result_json = json.loads(result)
+        print("%s: %s" %(result_json.get("code")), result_json("msg"))
 
 
 

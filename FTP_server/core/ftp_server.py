@@ -27,7 +27,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
     #     self.user = user
     #     self.user_dir = os.path.join(setting.HOME_DIR, user)  # 用户目录
     #     self.user_current_dir = self.user_dir.substring[self.user_dir.find("HOME"):]
-
+    curt_dir = None
 
     def handle(self):
         '''
@@ -92,7 +92,10 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                                   "code": 200,
                                   "msg": "Login success!"}
                         print("\033[32;1m----- login success -----\033[0m")
-                        sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
+                        curt_dir = os.path.join(setting.HOME_DIR, username)
+                        sys.path.append(curt_dir)  # 将用户路径添加到sys路径
+                        self.curt_dir = curt_dir
+                        os.chdir(self.curt_dir)
                     else:
                         result = {"result": False,
                                   "code": 401,
@@ -139,8 +142,11 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                               "username": username,
                               "msg": "Congratulations, signup success!"}
                     print("\033[32;1m----- signup success -----\033[0m")
-                    sys.path.append(os.path.join(setting.HOME_DIR, username))  # 将用户路径添加到sys路径
-                    os.makedirs(os.path.join(setting.HOME_DIR, username))  # 为用户创建目录
+                    curt_dir = os.path.join(setting.HOME_DIR, username)
+                    sys.path.append(curt_dir)  # 将用户路径添加到sys路径
+                    os.makedirs(curt_dir)  # 为用户创建目录
+                    self.curt_dir = curt_dir
+                    os.chdir(self.curt_dir)
             else:
                 info.pop("action")
                 new_user_info = {username: info}
@@ -195,7 +201,8 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
         '''
         print(info)
         file_name = info.get("filename")
-        file_path = os.path.join(setting.HOME_DIR, info.get("username"), file_name)
+        file_path = os.path.join(self.curt_dir, file_name)
+        print("file path: ", file_path)
         if not os.path.exists(file_path):
             # 如果服务器端没有该文件，则接收并保存
             # 发送服务器端文件情况
@@ -214,7 +221,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                     data = self.request.recv(setting.MAX_RECV_SIZE)
                     recv_size += len(data)
                     f.write(data)
-                    # f.flush()
+                f.flush()
                 print("\033[32;1m File received completed! \033[0m")
 
         else:
@@ -234,16 +241,17 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                 left_size = file_size - server_file_size
                 print("left size: ", left_size)
                 recv_size = 0
-                with open(file_path, 'wb') as f:
-                    f.seek(server_file_size)  # 将文件指针移动到文件最后
+                with open(file_path, 'ab') as f:  # 使用追加模式
+                    # f.seek(server_file_size)  # 将文件指针移动到文件最后
+                    print("cursor location: ", f.tell())
                     while recv_size < left_size:
                         data = self.request.recv(setting.MAX_RECV_SIZE)
                         recv_size += len(data)
                         f.write(data)
-                        # f.flush()
+                    f.flush()
                     print("\033[32;1m File received completed! \033[0m")
 
-            elif server_file_size == info.get("filesize"):
+            elif server_file_size >= info.get("filesize"):
                 # 如果服务器端文件大小与客户端文件大小相同，比较二者md5值
                 md5 = hashlib.md5()
                 with open(file_path, "rb") as f:
@@ -259,6 +267,7 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                 self.request.send(result_info)
 
                 # 如果md5值相同，客户端返回的文件大小将为0，如果不同，客户端将重新发送一遍文件
+                # file_info_return =
                 file_size = int(self.request.recv(1024).decode())
                 if file_size == 0:
                     self.request.send(b"same")
@@ -272,40 +281,111 @@ class ServerRequestHandler(socketserver.BaseRequestHandler):
                             data = self.request.recv(setting.MAX_RECV_SIZE)
                             recv_size += len(data)
                             f.write(data)
-                            # f.flush()
+                        f.flush()
                         print("\033[32;1m File received completed! \033[0m")
 
+    def ls(self, info):
+        '''
+        列出当前目录下文件列表功能
+        :param args: 文件路径，默认为当前文件目录
+        :return: 文件目录下的文件列表
+        '''
+        user_cur_dir = self.curt_dir  # os.path.join(setting.HOME_DIR, info.get("username"), info.get("path"))
+        result = os.listdir(user_cur_dir)
+        print(result)
 
+        result_dict = {"code": 200,
+                       "msg": "get files list success",
+                       "ls": result}
+        result_json = json.dumps(result_dict)
+        result_bytes = bytes(result_json, encoding='utf-8')
+        result_len = len(result_bytes)
+        self.request.send(bytes(result_len.__str__(), encoding='utf-8'))
+        self.request.recv(1024)
+        self.request.send(result_bytes)
 
+    def cd(self, info):
+        '''
+        打开指定的文件夹
+        :param args: 文件夹名
+        :return:
+        '''
+        print(info)
+        print(self.curt_dir)
+        folder = info.get("path")
+        # if folder == "..":
+        #
+        #     self.curt_dir = self.curt_dir
+        curt_dir = os.path.join(self.curt_dir, folder)
+        self.curt_dir = curt_dir
 
+        try:
+            os.chdir(curt_dir)
+        except FileNotFoundError as e:
+            result = {"code": 400,
+                      "msg": "当前目录下没有%s文件夹" % folder}
+        except NotADirectoryError as e:
+            result = {"code": 400,
+                      "msg": "%s不是文件夹" % folder}
+        else:
+            result = {"code": 200,
+                      "msg": "cd folder success"}
 
+        result_bytes = bytes(json.dumps(result), encoding="utf-8")
+        result_len = len(result_bytes)
+        self.request.send(bytes(result_len.__str__(), encoding='utf-8'))
+        self.request.recv(1024)
+        self.request.send(result_bytes)
 
-    # def ls(self, *args):
-    #     '''
-    #     列出当前目录下文件列表功能
-    #     :param args: 文件路径，默认为当前文件目录
-    #     :return: 文件目录下的文件列表
-    #     '''
-    #     user_cur_dir = os.path.join(self.user_dir, args[0])
-    #     result = os.listdir(user_cur_dir)
-    #
-    #     for _dir in result:
-    #         print("\t-", _dir)
-    #
-    # def cd(self, *args):
-    #     '''
-    #     打开指定的文件夹
-    #     :param args: 文件夹名
-    #     :return:
-    #     '''
-    #     user_dir = os.path.join(self.user_dir, args[0])
-    #     self.user_current_dir = user_dir
-    #
-    #     os.chdir(user_dir)
-    #     now_dir = user_dir.split(os.sep)[-1]
-    #     current_absdir = self.user_current_dir.join(now_dir)
-    #     print("\033[33;1m current path: {}\033;0m".format(current_absdir))
-    #
+        print("\033[33;1m current path: {} \033[0m".format(os.getcwd()))
+
+    def pwd(self, info):
+        """
+        获取当前位置
+        :param info:
+        :return:
+        """
+        self.curt_dir = os.getcwd()
+        result = {"code": 200,
+                  "msg": "get location success",
+                  "pwd": self.curt_dir}
+
+        result_json = json.dumps(result)
+        result_bytes = bytes(result_json, encoding='utf-8')
+        result_len = len(result_bytes)
+        self.request.send(bytes(result_len.__str__(), encoding='utf-8'))
+        self.request.recv(1024)
+        self.request.send(result_bytes)
+        print("\033[33;1m current path: {} \033[0m".format(self.curt_dir))
+
+    def mkdir(self, info):
+        """
+        创建文件夹
+        :param info:
+        :return:
+        """
+        folder_name = info.get("path")
+        try:
+            os.makedirs(folder_name)
+        except FileExistsError:
+            result = {"code": 400,
+                      "msg": "the folder name already existed!"}
+            print("the folder name already existed!")
+        except:
+            result = {"code": 400,
+                      "msg": "make dir error"}
+            print("make dir error")
+        else:
+            result = {"code": 200,
+                      "msg": "make dir %s success" % folder_name}
+        result_json = json.dumps(result)
+        result_bytes = bytes(result_json, encoding='utf-8')
+        result_len = len(result_bytes)
+        self.request.send(bytes(result_len.__str__(), encoding='utf-8'))
+        self.request.recv(1024)
+        self.request.send(result_bytes)
+        print("make dir %s success" % folder_name)
+
     # def mkdir(self, *args):
     #     '''
     #     新建文件夹
